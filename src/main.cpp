@@ -23,20 +23,23 @@
  ** Depth and images are captured with the ZED SDK, converted to OpenCV format and displayed. **
  ***********************************************************************************************/
 
- // ZED includes
 #include <sl/Camera.hpp>
-
-// OpenCV includes
-#include <opencv2/opencv.hpp>
-
-// Sample includes
 #include <SaveDepth.hpp>
+#include <fstream>
 
 using namespace sl;
-
-cv::Mat slMat2cvMat(Mat& input);
+using namespace cv;
+using namespace std;
+cv::Mat slMat2cvMat(sl::Mat& input);
+void on_mouse(int event, int x, int y, int flags, void *ustc); 
 void printHelp();
 
+
+cv::Point pt;
+cv::Mat img;
+sl::Mat depth;
+sl::Mat point_cloud;
+ofstream out("pos_saved.txt");
 int main(int argc, char **argv) {
 
     // Create a ZED camera object
@@ -45,7 +48,8 @@ int main(int argc, char **argv) {
     // Set configuration parameters
     InitParameters init_params;
     init_params.camera_resolution = RESOLUTION_HD1080;
-    init_params.depth_mode = DEPTH_MODE_PERFORMANCE;
+    init_params.depth_mode = DEPTH_MODE_QUALITY;
+    //init_params.depth_mode = DEPTH_MODE_PERFORMANCE;
     init_params.coordinate_units = UNIT_METER;
 
     // Open the camera
@@ -70,11 +74,12 @@ int main(int argc, char **argv) {
 
     // To share data between sl::Mat and cv::Mat, use slMat2cvMat()
     // Only the headers and pointer to the sl::Mat are copied, not the data itself
-    Mat image_zed(new_width, new_height, MAT_TYPE_8U_C4);
+   
+    sl::Mat image_zed(new_width, new_height, sl::MAT_TYPE_8U_C4);
     cv::Mat image_ocv = slMat2cvMat(image_zed);
-    Mat depth_image_zed(new_width, new_height, MAT_TYPE_8U_C4);
+    sl::Mat depth_image_zed(new_width, new_height, sl::MAT_TYPE_8U_C4);
     cv::Mat depth_image_ocv = slMat2cvMat(depth_image_zed);
-    Mat point_cloud;
+    //sl::Mat point_cloud;
 
     // Loop until 'q' is pressed
     char key = ' ';
@@ -91,33 +96,78 @@ int main(int argc, char **argv) {
             zed.retrieveMeasure(point_cloud, MEASURE_XYZRGBA, MEM_CPU, new_width, new_height);
 
             // Display image and depth using cv:Mat which share sl:Mat data
+            image_ocv.copyTo(img);
+            //depth_image_zed.copyTo(depth);
+            zed.retrieveMeasure(depth, MEASURE_DEPTH);
             cv::imshow("Image", image_ocv);
-            cv::imshow("Depth", depth_image_ocv);
+           // cv::imshow("Depth", depth_image_ocv);
+
+            pt = Point(-1,-1);
+            setMouseCallback("Image",on_mouse,0);//调用回调函数
+
+
 
             // Handle key event
             key = cv::waitKey(10);
             processKeyEvent(zed, key);
+
         }
     }
     zed.close();
     return 0;
 }
 
-/**
-* Conversion function between sl::Mat and cv::Mat
-**/
-cv::Mat slMat2cvMat(Mat& input) {
+
+void on_mouse(int event, int x, int y, int flags, void *ustc)//event鼠标事件代号，x,y鼠标坐标，flags拖拽和键盘操作的代号  
+{
+	static cv::Point pre_pt (-1, -1);//初始坐标  
+	//static Point cur_pt(-1, -1);//实时坐标  
+    char temp[100];
+    char pos[100];
+    
+	if (event == CV_EVENT_LBUTTONDOWN)//左键按下，读取初始坐标，并在图像上该点处划圆  
+	{
+	//image_ocv.copyTo(img);//将原始图片复制到img中  
+		
+	pre_pt = Point(x, y);
+        pt = pre_pt;
+
+        sl::float4 point_cloud_value;
+        point_cloud.getValue(x,y,&point_cloud_value);
+        float distance=sqrt(point_cloud_value.x*point_cloud_value.x+point_cloud_value.y*point_cloud_value.y+point_cloud_value.z*point_cloud_value.z);
+
+        float depth_value;
+        depth.getValue(x,y,&depth_value);
+
+        //isPointDraw = true;
+        sprintf(temp, "(%d,%d,%f)", x, y,depth_value);
+        sprintf(pos,"(%f,%f,%f,%f)",point_cloud_value.x,point_cloud_value.y,point_cloud_value.z,distance);
+        out<<point_cloud_value.x<<'\t'<<point_cloud_value.y<<'\t'<<point_cloud_value.z<<'\t'<<endl;
+
+        putText(img, temp, pre_pt, FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 0), 1, 8);//显示像素坐标和相机到该点的实际距离
+        putText(img, pos, Point(300,500), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,255,0), 1, 8);  //显示该点的三维坐标和距离
+
+	circle(img, pre_pt, 2, Scalar( 0, 0,255), CV_FILLED, CV_AA, 0);//划圆  
+        imshow("Image", img);
+        waitKey(0);
+	}
+	
+}
+
+
+
+cv::Mat slMat2cvMat(sl::Mat& input) {
     // Mapping between MAT_TYPE and CV_TYPE
     int cv_type = -1;
     switch (input.getDataType()) {
-        case MAT_TYPE_32F_C1: cv_type = CV_32FC1; break;
-        case MAT_TYPE_32F_C2: cv_type = CV_32FC2; break;
-        case MAT_TYPE_32F_C3: cv_type = CV_32FC3; break;
-        case MAT_TYPE_32F_C4: cv_type = CV_32FC4; break;
-        case MAT_TYPE_8U_C1: cv_type = CV_8UC1; break;
-        case MAT_TYPE_8U_C2: cv_type = CV_8UC2; break;
-        case MAT_TYPE_8U_C3: cv_type = CV_8UC3; break;
-        case MAT_TYPE_8U_C4: cv_type = CV_8UC4; break;
+        case sl::MAT_TYPE_32F_C1: cv_type = CV_32FC1; break;
+        case sl::MAT_TYPE_32F_C2: cv_type = CV_32FC2; break;
+        case sl::MAT_TYPE_32F_C3: cv_type = CV_32FC3; break;
+        case sl::MAT_TYPE_32F_C4: cv_type = CV_32FC4; break;
+        case sl::MAT_TYPE_8U_C1: cv_type = CV_8UC1; break;
+        case sl::MAT_TYPE_8U_C2: cv_type = CV_8UC2; break;
+        case sl::MAT_TYPE_8U_C3: cv_type = CV_8UC3; break;
+        case sl::MAT_TYPE_8U_C4: cv_type = CV_8UC4; break;
         default: break;
     }
 
@@ -126,9 +176,6 @@ cv::Mat slMat2cvMat(Mat& input) {
     return cv::Mat(input.getHeight(), input.getWidth(), cv_type, input.getPtr<sl::uchar1>(MEM_CPU));
 }
 
-/**
-* This function displays help in console
-**/
 void printHelp() {
     std::cout << " Press 's' to save Side by side images" << std::endl;
     std::cout << " Press 'p' to save Point Cloud" << std::endl;

@@ -22,8 +22,9 @@ std::string getDepthFormatName(sl::DEPTH_FORMAT f);
 
 void savePointCloud(sl::Camera& zed, std::string filename);
 void saveDepth(sl::Camera& zed, std::string filename);
-void saveSbSImage(sl::Camera& zed, std::string filename);
+void saveSbSImage(sl::Camera& zed, std::string filename, std::string filename2);
 
 void processKeyEvent(sl::Camera& zed, char &key);
+
 
 #endif
